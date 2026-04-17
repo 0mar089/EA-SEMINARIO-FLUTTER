@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import '../models/organization.dart';
 import '../services/organization_service.dart';
 
 class CreateTaskScreen extends StatefulWidget {
   final String organizacionId;
-  final List<String> usuarios;
+  final List<OrganizationUser> usuarios;
 
   const CreateTaskScreen({
     super.key,
@@ -25,7 +26,17 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
 
   DateTime? _startDate;
   DateTime? _endDate;
+  late final Set<String> _selectedUsuarioIds;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Start with all organization users selected by default to preserve current behavior.
+    _selectedUsuarioIds = widget.usuarios
+        .map((OrganizationUser user) => user.id)
+        .toSet();
+  }
 
   @override
   void dispose() {
@@ -44,9 +55,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
       labelText: label,
       hintText: hint,
       prefixIcon: Icon(icon),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
       filled: true,
     );
   }
@@ -123,6 +132,13 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
       return;
     }
 
+    if (_selectedUsuarioIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona al menos un usuario')),
+      );
+      return;
+    }
+
     setState(() {
       _isSubmitting = true;
     });
@@ -133,7 +149,7 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
         titulo: _titleController.text.trim(),
         fechaInicio: _normalizeStartDate(_startDate!),
         fechaFin: _normalizeEndDate(_endDate!),
-        usuarios: widget.usuarios,
+        usuarios: _selectedUsuarioIds.toList(),
       );
 
       print('Formulario válido. Datos listos para la Fase 4');
@@ -146,9 +162,9 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo crear la tarea: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('No se pudo crear la tarea: $e')));
     } finally {
       if (mounted) {
         setState(() {
@@ -158,12 +174,71 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
     }
   }
 
+  Future<void> _openUserSelector() async {
+    if (widget.usuarios.isEmpty) {
+      return;
+    }
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: SizedBox(
+            height: MediaQuery.of(context).size.height * 0.6,
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                const Text(
+                  'Selecciona usuarios',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: widget.usuarios.length,
+                    itemBuilder: (BuildContext context, int index) {
+                      final OrganizationUser user = widget.usuarios[index];
+
+                      return CheckboxListTile(
+                        value: _selectedUsuarioIds.contains(user.id),
+                        onChanged: (bool? checked) {
+                          setState(() {
+                            if (checked == true) {
+                              _selectedUsuarioIds.add(user.id);
+                            } else {
+                              _selectedUsuarioIds.remove(user.id);
+                            }
+                          });
+                        },
+                        title: Text(user.name),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      );
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Listo'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Nueva Tarea'),
-      ),
+      appBar: AppBar(title: const Text('Nueva Tarea')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -196,13 +271,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                           controller: _startDateController,
                           readOnly: true,
                           onTap: _pickStartDate,
-                          decoration: _buildInputDecoration(
-                            label: 'Fecha de inicio',
-                            hint: 'Selecciona una fecha',
-                            icon: Icons.event,
-                          ).copyWith(
-                            suffixIcon: const Icon(Icons.calendar_today),
-                          ),
+                          decoration:
+                              _buildInputDecoration(
+                                label: 'Fecha de inicio',
+                                hint: 'Selecciona una fecha',
+                                icon: Icons.event,
+                              ).copyWith(
+                                suffixIcon: const Icon(Icons.calendar_today),
+                              ),
                           validator: (String? value) {
                             if (_startDate == null) {
                               return 'La fecha de inicio es obligatoria';
@@ -215,13 +291,14 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                           controller: _endDateController,
                           readOnly: true,
                           onTap: _pickEndDate,
-                          decoration: _buildInputDecoration(
-                            label: 'Fecha de fin',
-                            hint: 'Selecciona una fecha',
-                            icon: Icons.event_available,
-                          ).copyWith(
-                            suffixIcon: const Icon(Icons.calendar_today),
-                          ),
+                          decoration:
+                              _buildInputDecoration(
+                                label: 'Fecha de fin',
+                                hint: 'Selecciona una fecha',
+                                icon: Icons.event_available,
+                              ).copyWith(
+                                suffixIcon: const Icon(Icons.calendar_today),
+                              ),
                           validator: (String? value) {
                             if (_endDate == null) {
                               return 'La fecha de fin es obligatoria';
@@ -233,6 +310,34 @@ class _CreateTaskScreenState extends State<CreateTaskScreen> {
                             return null;
                           },
                         ),
+                        const SizedBox(height: 20),
+                        if (widget.usuarios.isEmpty)
+                          const Text(
+                            'Esta organización no tiene usuarios para asignar.',
+                          )
+                        else
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              InkWell(
+                                onTap: _openUserSelector,
+                                child: InputDecorator(
+                                  decoration:
+                                      _buildInputDecoration(
+                                        label: '',
+                                        hint: 'Selecciona usuarios',
+                                        icon: Icons.group,
+                                      ).copyWith(
+                                        labelText: null,
+                                        suffixIcon: const Icon(
+                                          Icons.arrow_drop_down,
+                                        ),
+                                      ),
+                                  child: const Text('Pulsa para seleccionar'),
+                                ),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
